@@ -1,0 +1,9 @@
+{
+  "name": "Arbeitszeit Stop Uhr",
+  "short_name": "Arbeitszeit",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0b0d11",
+  "theme_color": "#111318",
+  "description": "Private Arbeitszeit-Stoppuhr"
+}

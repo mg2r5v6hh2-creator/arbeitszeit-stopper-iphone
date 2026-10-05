@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#111318">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Arbeitszeit">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Arbeitszeit Stop Uhr</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",system-ui,sans-serif;color-scheme:dark}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#0b0d11;color:#f7f7f8;min-height:100vh;padding:calc(env(safe-area-inset-top) + 14px) 16px calc(env(safe-area-inset-bottom) + 28px)}
+.app{max-width:520px;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;margin:4px 2px 18px}
+h1{font-size:24px;margin:0}.version{font-size:12px;color:#9298a4}
+.card{background:#171a20;border:1px solid #282d37;border-radius:24px;padding:20px;margin-bottom:14px;box-shadow:0 12px 30px #0004}
+.status{text-align:center;color:#a9afba;font-size:14px}.clock{text-align:center;font-size:52px;font-weight:750;letter-spacing:-2px;font-variant-numeric:tabular-nums;margin:8px 0 4px}
+.since{text-align:center;color:#8f96a3;font-size:13px;min-height:18px}
+.mainbtn{width:100%;border:0;border-radius:18px;padding:18px;font-size:20px;font-weight:800;margin-top:16px;color:white;background:#25a55b}
+.mainbtn.stop{background:#d84848}.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.action{border:1px solid #343a46;border-radius:17px;padding:15px 8px;background:#22262e;color:#fff;font-size:16px;font-weight:700}
+.action.active{background:#9b6a22;border-color:#bd8330}.action:disabled{opacity:.38}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.metric{background:#11141a;border-radius:17px;padding:14px}.label{color:#9097a3;font-size:12px}.value{font-size:23px;font-weight:750;margin-top:3px;font-variant-numeric:tabular-nums}
+h2{font-size:18px;margin:0 0 12px}.row{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid #2a2f38;font-size:14px}.row:first-of-type{border-top:0}.muted{color:#9299a5}.empty{color:#9299a5;text-align:center;padding:12px}
+.note{font-size:12px;color:#7f8793;text-align:center;margin-top:16px}
+</style>
+</head>
+<body>
+<div class="app">
+ <div class="top"><h1>⏱️ Arbeitszeit Stop Uhr</h1><div class="version">v0.1.0</div></div>
+ <section class="card">
+   <div class="status" id="status">Bereit</div>
+   <div class="clock" id="clock">00:00:00</div>
+   <div class="since" id="since"></div>
+   <button id="workBtn" class="mainbtn">▶ Arbeitsbeginn</button>
+   <div class="actions">
+     <button id="coffeeBtn" class="action" disabled>☕ Kaffee</button>
+     <button id="breakBtn" class="action" disabled>⏸ Unterbrechung</button>
+   </div>
+ </section>
+ <section class="card">
+   <div class="grid">
+    <div class="metric"><div class="label">Heute gearbeitet</div><div class="value" id="worked">00:00:00</div></div>
+    <div class="metric"><div class="label">Pausen heute</div><div class="value" id="paused">00:00:00</div></div>
+   </div>
+ </section>
+ <section class="card"><h2>Heute</h2><div id="history"></div></section>
+ <div class="note">Daten werden nur auf diesem Gerät im Browser gespeichert.</div>
+</div>
+<script>
+const VERSION="0.1.0", KEY="azs_iphone_v010";
+const blank=()=>({mode:"idle",started:null,segmentStart:null,entries:[]});
+let d; try{d=JSON.parse(localStorage.getItem(KEY))||blank()}catch{d=blank()}
+const $=id=>document.getElementById(id), pad=n=>String(n).padStart(2,"0");
+const day=ts=>{let x=new Date(ts);return `${x.getFullYear()}-${pad(x.getMonth()+1)}-${pad(x.getDate())}`};
+const time=ts=>new Date(ts).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"});
+const dur=ms=>{ms=Math.max(0,ms);let s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor(s%3600/60);return `${pad(h)}:${pad(m)}:${pad(s%60)}`};
+const save=()=>localStorage.setItem(KEY,JSON.stringify(d));
+function closeSegment(end=Date.now()){
+ if(!d.segmentStart||d.mode==="idle")return;
+ d.entries.push({id:crypto.randomUUID?crypto.randomUUID():String(end)+Math.random(),type:d.mode,start:d.segmentStart,end});
+ d.segmentStart=null;
+}
+function startWork(){
+ if(d.mode==="idle"){d.started=Date.now();d.mode="work";d.segmentStart=d.started}
+ else if(d.mode!=="work"){closeSegment();d.mode="work";d.segmentStart=Date.now()}
+ save();render();
+}
+function togglePause(type){
+ if(d.mode==="idle")return;
+ if(d.mode===type){closeSegment();d.mode="work";d.segmentStart=Date.now()}
+ else{closeSegment();d.mode=type;d.segmentStart=Date.now()}
+ save();render();
+}
+function finish(){
+ if(d.mode==="idle")return;
+ closeSegment();d.mode="idle";d.started=null;save();render();
+}
+function todayEntries(){
+ const t=day(Date.now()), a=d.entries.filter(e=>day(e.start)===t);
+ if(d.mode!=="idle"&&d.segmentStart&&day(d.segmentStart)===t)a.push({type:d.mode,start:d.segmentStart,end:Date.now(),live:true});
+ return a;
+}
+function render(){
+ const a=todayEntries();
+ let work=a.filter(e=>e.type==="work").reduce((n,e)=>n+e.end-e.start,0);
+ let pause=a.filter(e=>e.type!=="work").reduce((n,e)=>n+e.end-e.start,0);
+ $("worked").textContent=dur(work); $("paused").textContent=dur(pause);
+ $("clock").textContent=dur(work);
+ const idle=d.mode==="idle", workMode=d.mode==="work";
+ $("workBtn").textContent=idle?"▶ Arbeitsbeginn": "■ Feierabend";
+ $("workBtn").className="mainbtn"+(idle?"":" stop");
+ $("coffeeBtn").disabled=idle;$("breakBtn").disabled=idle;
+ $("coffeeBtn").className="action"+(d.mode==="coffee"?" active":"");
+ $("breakBtn").className="action"+(d.mode==="break"?" active":"");
+ $("coffeeBtn").textContent=d.mode==="coffee"?"▶ Kaffee beenden":"☕ Kaffee";
+ $("breakBtn").textContent=d.mode==="break"?"▶ Weiterarbeiten":"⏸ Unterbrechung";
+ $("status").textContent=idle?"Bereit":workMode?"Arbeitszeit läuft":d.mode==="coffee"?"Kaffeepause":"Unterbrechung";
+ $("since").textContent=idle?"":`${d.mode==="work"?"Seit":"Beginn"} ${time(d.segmentStart)}`;
+ const finished=d.entries.filter(e=>day(e.start)===day(Date.now())).slice().reverse();
+ $("history").innerHTML=finished.length?finished.map(e=>`<div class="row"><span>${e.type==="work"?"Arbeit":e.type==="coffee"?"☕ Kaffee":"Unterbrechung"} <span class="muted">${time(e.start)}–${time(e.end)}</span></span><b>${dur(e.end-e.start)}</b></div>`).join(""):'<div class="empty">Noch keine Einträge heute.</div>';
+}
+$("workBtn").onclick=()=>d.mode==="idle"?startWork():finish();
+$("coffeeBtn").onclick=()=>togglePause("coffee");
+$("breakBtn").onclick=()=>togglePause("break");
+setInterval(render,1000);render();
+if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
+</script>
+</body></html>
